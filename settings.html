@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Settings — L5X Lint{% endblock %}
+{% block extra_css %}
+<style>
+.settings-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); background:var(--panel); }
+.settings-tab-btn {
+  padding:.7rem 1.4rem; font-size:.85rem; font-weight:600;
+  color:var(--muted); background:none; border:none;
+  border-bottom:2px solid transparent;
+  cursor:pointer; font-family:var(--font-ui); transition:color .15s,border-color .15s;
+}
+.settings-tab-btn:hover { color:var(--text); }
+.settings-tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); background:var(--surface); }
+.settings-pane { display:none; }
+.settings-pane.active { display:block; }
+
+/* Rules tab */
+.rule-row {
+  display:flex; align-items:center; gap:.75rem;
+  padding:.55rem 4%; border-bottom:1px solid var(--border);
+}
+.rule-row:last-child { border-bottom:none; }
+.rule-toggle { flex-shrink:0; }
+.rule-toggle input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var(--accent); }
+.rule-name { flex:1; font-size:.85rem; color:var(--text-2); }
+.rule-name.disabled { color:var(--muted-2); text-decoration:line-through; }
+
+/* Config tab */
+.profile-bar { display:flex; gap:.5rem; flex-wrap:wrap; }
+.profile-btn {
+  padding:.38rem .9rem; border:1px solid var(--border-mid);
+  border-radius:20px; background:var(--panel);
+  color:var(--muted); font-size:.8rem; font-weight:600;
+  cursor:pointer; transition:all .15s; font-family:var(--font-ui);
+}
+.profile-btn:hover  { border-color:var(--accent); color:var(--accent); }
+.profile-btn.active { background:var(--accent-sub); border-color:var(--accent); color:var(--accent); }
+.weight-sum-val {
+  font-family:var(--font-mono); font-weight:700; font-size:.82rem;
+  padding:.2rem .5rem; border-radius:4px;
+  background:var(--panel); border:1px solid var(--border-mid); color:var(--text);
+}
+.weight-sum-val.ok    { color:var(--success); border-color:var(--success-br); background:var(--success-bg); }
+.weight-sum-val.error { color:var(--danger);  border-color:var(--danger-br);  background:var(--danger-bg);  }
+
+/* Save bar */
+.settings-save-bar {
+  display:flex; align-items:center; justify-content:flex-end;
+  gap:.6rem; padding:1rem 4%;
+  border-top:1px solid var(--border); background:var(--panel);
+  position:sticky; bottom:0;
+}
+</style>
+<style>
+.rule-code { font-family:var(--font-mono); font-size:.68rem; font-weight:800; padding:.1rem .35rem;
+  border-radius:4px; flex:0 0 58px; text-align:center; cursor:help; }
+.rc-CRT { background:var(--critical-bg); color:var(--critical); }
+.rc-ERR { background:var(--danger-bg); color:var(--danger); }
+.rc-WAR { background:var(--warn-bg); color:var(--warn); }
+.rc-INF { background:var(--info-bg); color:var(--info); }
+.rule-desc { font-size:.74rem; color:var(--muted); flex:1; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; cursor:help; }
+.rule-row .rule-name { flex:0 0 230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rules-bulk { display:flex; gap:.4rem; align-items:center; padding:.6rem 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <a class="btn btn-outline btn-sm" href="/" title="Return to the report (it reloads with these settings)" style="margin-bottom:.6rem;display:inline-block">← Back to report</a>
+  <h1>Settings</h1>
+  <p>Switch rules on or off, and manage the module lifecycle dataset. Severity is fixed by each rule's code (CRT / ERR / WAR / INF). Changes apply when you go back to the report.</p>
+</div>
+
+<div class="card">
+  <div class="settings-tabs" id="settings-tabs">
+    <button class="settings-tab-btn active" data-stab="rules" onclick="switchSettingsTab('rules')">☑ Rule Checklist</button>
+    <button class="settings-tab-btn" data-stab="lifecycle" onclick="switchSettingsTab('lifecycle')">♻ Lifecycle</button>
+  </div>
+
+  <div class="settings-pane active" id="spane-rules">
+    <div class="rules-bulk">
+      <button class="btn btn-outline btn-sm" onclick="setAll(true)">Enable all</button>
+      <button class="btn btn-outline btn-sm" onclick="setAll(false)">Disable all</button>
+      <span style="flex:1"></span>
+      <span class="form-hint" id="rule-count"></span>
+    </div>
+    {% for sev, label in [("CRT","Critical"),("ERR","Error"),("WAR","Warning"),("INF","Info")] %}
+    <div class="section-title">{{ label }} ({{ sev }})</div>
+      {% for r in rules if r.code.startswith(sev) %}
+      {% set locked = r.code in lifecycle_codes %}
+      <div class="rule-row">
+        <span class="rule-toggle">{% if locked %}<input type="checkbox" checked disabled title="Controlled by the Lifecycle switch (Lifecycle tab)"/>{% else %}<input type="checkbox" checked data-code="{{ r.code }}" onchange="countRules()" title="Enable / disable {{ r.code }}"/>{% endif %}</span>
+        <span class="rule-code rc-{{ sev }}" title="{{ label }}">{{ r.code }}</span>
+        <span class="rule-name" title="{{ r.title }}">{{ r.title }}</span>
+        <span class="rule-desc" title="{{ r.desc }}">{% if locked %}<i>Controlled by the Lifecycle switch.</i> {% endif %}{{ r.desc }}</span>
+      </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  <div class="settings-pane" id="spane-lifecycle">
+    <div class="section-title">Module Lifecycle Dataset</div>
+    <div class="card-body">
+      <p style="font-size:.83rem;color:var(--muted);margin-bottom:.75rem">
+        Lifecycle statuses come from a local dataset — no network access, no scraping.
+        Build a JSON or CSV from Rockwell's
+        <a href="https://compatibility.rockwellautomation.com" target="_blank" rel="noopener">Product Compatibility &amp; Download Center</a>
+        lifecycle pages and import it here. The seed dataset shipped with the tool is a
+        starting point only — <b>verify before procurement decisions</b>.
+      </p>
+      <div class="form-row">
+        <div>
+          <div class="form-label">Lifecycle checks</div>
+          <div class="form-hint">Off: no ERR017/WAR021/INF009 findings, and no lifecycle columns in the Hardware view or reports.</div>
+        </div>
+        <label style="font-size:.85rem;display:flex;gap:.4rem;align-items:center"><input type="checkbox" id="lc-enabled" checked/> Enabled</label>
+      </div>
+      <div id="lc-info" class="form-hint" style="margin:.6rem 0 1rem">Loading dataset info…</div>
+
+      <div class="form-row">
+        <div>
+          <div class="form-label">Refresh the dataset</div>
+          <div class="form-hint">1. Export the sheet · 2. fill it (e.g. with an online assistant — the prompt is on its Instructions sheet) · 3. import it back. You review every change before it is saved.</div>
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <a class="btn btn-outline btn-sm" href="/api/lifecycle/template.xlsx?scope=all" title="Every catalog in the dataset, as an Excel sheet">⬇ Export dataset (Excel)</a>
+          <input type="file" id="lc-file" accept=".xlsx,.csv,.json" style="display:none"
+                 onchange="if(this.files[0]) importLifecycle(this.files[0]); this.value=''"/>
+          <button class="btn btn-primary btn-sm" title="Excel or CSV sheet (reviewed before saving), or a JSON backup" onclick="document.getElementById('lc-file').click()">⤒ Import</button>
+        </div>
+      </div>
+      <div id="lc-result" style="font-size:.82rem;margin-top:.6rem"></div>
+      <p class="form-hint">Headless: <code>python l5x_cli.py lifecycle-import mydata.csv --scraped-at 2026-06-01</code></p>
+    </div>
+  </div>
+
+  <div class="settings-save-bar">
+    <span id="save-msg" style="font-size:.82rem;color:var(--success);display:none">✔ Saved</span>
+    <span id="save-err" style="font-size:.82rem;color:var(--danger);display:none"></span>
+    <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchSettingsTab(tab) {
+  document.querySelectorAll('.settings-tab-btn').forEach(function(b){
+    b.classList.toggle('active', b.dataset.stab === tab); });
+  document.querySelectorAll('.settings-pane').forEach(function(p){
+    p.classList.toggle('active', p.id === 'spane-' + tab); });
+  if (tab === 'lifecycle') refreshLcInfo();
+}
+function boxes(){ return Array.prototype.slice.call(document.querySelectorAll('[data-code]')); }
+function countRules(){
+  var b = boxes(), on = b.filter(function(x){ return x.checked; }).length;
+  document.getElementById('rule-count').textContent = on + ' of ' + b.length + ' rules enabled';
+}
+function setAll(v){ boxes().forEach(function(x){ x.checked = v; }); countRules(); }
+
+window.addEventListener('DOMContentLoaded', function(){
+  fetch('/api/settings').then(function(r){ return r.json(); }).then(function(cfg){
+    var off = cfg.disabled_rules || [];
+    document.getElementById('lc-enabled').checked = cfg.lifecycle_enabled !== false;
+    boxes().forEach(function(x){ x.checked = off.indexOf(x.dataset.code) < 0; });
+    countRules();
+  }).catch(function(){ countRules(); });
+  if (location.hash === '#lifecycle') switchSettingsTab('lifecycle');
+});
+
+function saveSettings(){
+  var off = boxes().filter(function(x){ return !x.checked; }).map(function(x){ return x.dataset.code; });
+  var ok = document.getElementById('save-msg'), err = document.getElementById('save-err');
+  ok.style.display = err.style.display = 'none';
+  fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
+                          body: JSON.stringify({disabled_rules: off,
+                                                lifecycle_enabled: document.getElementById('lc-enabled').checked})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.success){ ok.textContent='✔ Saved — returning to the report…'; ok.style.display='inline'; setTimeout(function(){ window.location = '/'; }, 700); }
+      else { err.textContent = 'Save failed: ' + (d.error || 'unknown error'); err.style.display='inline'; }
+    })
+    .catch(function(e){ err.textContent = 'Save failed: ' + e.message; err.style.display='inline'; });
+}
+
+function refreshLcInfo(){
+  fetch('/api/lifecycle/info').then(function(r){ return r.json(); }).then(function(i){
+    var el=document.getElementById('lc-info');
+    if(!i.available){ el.innerHTML='<b style="color:#9C0006">No dataset loaded.</b> Module lifecycle checks are inactive.'; return; }
+    el.innerHTML='Dataset: <b>'+(i.count||0)+'</b> catalog numbers · data as of <b>'+(i.scraped_at||'?')+'</b>'+
+      (i.verified ? '' : ' · <span style="color:#9C5700">unverified seed data</span>');
+  }).catch(function(){});
+}
+function importLifecycle(file){
+  var out = document.getElementById('lc-result');
+  var fd = new FormData(); fd.append('file', file);
+  if (/\.json$/i.test(file.name)){            // JSON backup: direct restore
+    fd.append('merge', 'true');
+    out.textContent = 'Importing…';
+    fetch('/api/lifecycle/import', {method:'POST', body:fd}).then(function(r){ return r.json(); })
+      .then(function(d){
+        out.innerHTML = d.success ? '<span style="color:var(--success)">✔ Imported '+d.imported+' entries ('+d.total+' total)</span>'
+                                  : '<span style="color:var(--danger)">Import failed: '+esc(d.error||(d.errors||[]).join('; '))+'</span>';
+        refreshLcInfo();
+      });
+    return;
+  }
+  out.textContent = 'Reading sheet…';
+  fetch('/api/lifecycle/preview', {method:'POST', body:fd}).then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.success){ out.innerHTML = '<span style="color:var(--danger)">'+esc(d.error||'Could not read the file')+'</span>'; return; }
+      var li = function(arr, f){ return arr.length ? '<ul style="margin:.2rem 0 .4rem 1.1rem;max-height:9rem;overflow:auto">'+arr.map(f).join('')+'</ul>' : ''; };
+      out.innerHTML =
+        '<div style="border:1px solid var(--border);border-radius:8px;padding:.8rem 1rem;background:var(--surface)">'+
+        '<b>Review before saving</b> — '+d.rows+' usable rows<br>'+
+        d.changed.length+' status change'+(d.changed.length===1?'':'s')+', '+d.added.length+' new, '+d.unchanged+' unchanged'+
+        (d.skipped.length ? ', '+d.skipped.length+' left Unknown (not imported)' : '')+
+        li(d.changed, function(c){ return '<li><code>'+esc(c.catalog)+'</code>: '+esc(c.from||'—')+' → <b>'+esc(c.to)+'</b></li>'; })+
+        (d.no_source.length ? '<div style="color:var(--warn);margin-top:.3rem">⚠ '+d.no_source.length+' row(s) without a Source URL will be marked unverified: '+
+            esc(d.no_source.slice(0,8).join(', '))+(d.no_source.length>8?' …':'')+'</div>' : '')+
+        (d.errors.length ? '<div style="color:var(--danger);margin-top:.3rem">'+d.errors.length+' row(s) skipped: '+esc(d.errors.slice(0,3).join('; '))+'</div>' : '')+
+        '<div style="display:flex;gap:.5rem;margin-top:.7rem">'+
+          '<button class="btn btn-primary btn-sm" onclick="applyLifecycle(\''+d.token+'\')">Apply changes</button>'+
+          '<button class="btn btn-outline btn-sm" onclick="document.getElementById(\'lc-result\').innerHTML=\'Import cancelled — nothing saved.\'">Cancel</button>'+
+        '</div></div>';
+    })
+    .catch(function(e){ out.innerHTML = '<span style="color:var(--danger)">'+esc(e.message)+'</span>'; });
+}
+function applyLifecycle(token){
+  var out = document.getElementById('lc-result');
+  fetch('/api/lifecycle/apply', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:token})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      out.innerHTML = d.success ? '<span style="color:var(--success)">✔ Saved '+d.imported+' entries ('+d.total+' in dataset)</span>'
+                                : '<span style="color:var(--danger)">'+esc(d.error||'Apply failed')+'</span>';
+      refreshLcInfo();
+    });
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+</script>
+{% endblock %}

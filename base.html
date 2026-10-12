@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}L5X Lint{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <script>
+    /* Apply the saved theme before first paint — avoids a light flash for
+       dark-mode users (script.js still wires up the toggle button later). */
+    try { if (localStorage.getItem('l5x-lint-theme') === 'dark')
+            document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}
+  </script>
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-badge">L5X</span>
+      <span class="brand-name">LINT</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="theme-btn" onclick="toggleTheme()">
+        <span class="theme-icon" id="theme-icon">🌙</span>
+        <span id="theme-label">Dark mode</span>
+      </button>
+      <button class="topbar-link" onclick="window.location='/settings'">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="flex-shrink:0">
+          <path fill-rule="evenodd" d="M6.5 1a.5.5 0 0 0-.488.392L5.72 2.7a5.5 5.5 0 0 0-.93.537l-1.27-.424a.5.5 0 0 0-.577.23L1.44 4.957a.5.5 0 0 0 .095.61l.997.87a5.5 5.5 0 0 0 0 1.126l-.997.87a.5.5 0 0 0-.095.61l1.502 2.914a.5.5 0 0 0 .578.23l1.27-.424c.291.2.603.374.93.537l.29 1.308A.5.5 0 0 0 6.5 14h3a.5.5 0 0 0 .488-.392l.292-1.308a5.5 5.5 0 0 0 .93-.537l1.27.424a.5.5 0 0 0 .577-.23l1.502-2.914a.5.5 0 0 0-.095-.61l-.997-.87a5.5 5.5 0 0 0 0-1.126l.997-.87a.5.5 0 0 0 .095-.61L12.562 3.043a.5.5 0 0 0-.578-.23l-1.27.424a5.5 5.5 0 0 0-.93-.537L9.49 1.392A.5.5 0 0 0 9 1H6.5zM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/>
+        </svg>
+        Settings
+      </button>
+    </div>
+  </div>
+</div>
+
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+<script src="/static/script.js"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

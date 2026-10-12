@@ -1,0 +1,990 @@
+{% extends "base.html" %}
+{% block title %}L5X Lint{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ════════════════════════════════════════════════════════════════════
+   Report UI v2 — state-driven layout
+   Structure: toolbar on top, sidebar tree left, findings/hardware main.
+══════════════════════════════════════════════════════════════════════ */
+
+/* ── Upload zone ── */
+.drop-full {
+  margin:4% auto; max-width:760px; border:2px dashed var(--border-mid);
+  border-radius:var(--radius-lg); padding:4rem 2rem; text-align:center;
+  background:var(--surface); cursor:pointer; transition:border-color .15s, background .15s;
+}
+.drop-full.hover { border-color:var(--accent); background:var(--panel); }
+.drop-label { font-size:1.05rem; font-weight:600; color:var(--text); margin:.75rem 0 .25rem; }
+.drop-sub   { font-size:.82rem; color:var(--muted); margin-bottom:1.25rem; }
+.drop-icon  { font-size:2rem; }
+
+/* ── Status line ── */
+.status-line {
+  display:none; align-items:center; gap:.6rem; max-width:760px;
+  margin:.75rem auto 0; font-size:.85rem; color:var(--text-2);
+}
+.status-line.show { display:flex; }
+.ring { flex-shrink:0; }
+.ring-track { stroke:var(--border); }
+.ring-arc { stroke:var(--accent); transition:stroke-dashoffset .3s ease; }
+.ring.indet { animation:rot 1s linear infinite; }
+.ring-pct { font-family:var(--font-ui); font-size:12px; font-weight:700; fill:var(--text); }
+.sl-phase { font-weight:600; color:var(--text); }
+.sl-icon { font-size:1.1rem; }
+.spin { display:inline-block; animation:rot 1s linear infinite; }
+@keyframes rot { to { transform:rotate(360deg); } }
+
+/* ── Batch breadcrumb ── */
+.batch-bar {
+  display:flex; align-items:center; gap:.6rem; padding:.5rem 1rem;
+  background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+  margin-bottom:.75rem; font-size:.83rem;
+}
+.batch-bar .crumb { color:var(--muted); }
+.batch-bar .crumb b { color:var(--text); }
+
+/* ── Layout: toolbar / sidebar / main ── */
+.rpt-toolbar {
+  display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;
+  padding:.6rem .9rem; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--radius);
+  margin-bottom:.75rem; position:sticky; top:.5rem; z-index:50;
+  box-shadow:var(--shadow);
+}
+.rpt-body { display:flex; gap:.75rem; align-items:flex-start; }
+.rpt-side {
+  width:250px; flex-shrink:0; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--radius);
+  overflow:hidden; position:sticky; top:4rem;
+  max-height:calc(100vh - 5rem); overflow-y:auto;
+}
+.rpt-main { flex:1; min-width:0; }
+
+@media (max-width: 900px) {
+  .fi-loc { flex-basis:150px; }
+  .rpt-body { flex-direction:column; }
+  .rpt-side { width:100%; position:static; max-height:none; }
+}
+
+/* ── Severity chips (clickable filters) ── */
+.chip { white-space:nowrap;
+
+  display:inline-flex; align-items:center; gap:.3rem;
+  font-family:var(--font-mono); font-size:.7rem; font-weight:700;
+  padding:.25rem .55rem; border-radius:99px; cursor:pointer;
+  border:1.5px solid transparent; user-select:none;
+  opacity:.45; transition:opacity .12s, border-color .12s;
+}
+.chip.on { opacity:1; }
+.chip-critical { background:var(--critical-bg);  color:var(--critical);   border-color:var(--critical); }
+.chip-error    { background:var(--danger-bg);  color:var(--danger);  border-color:var(--danger); }
+.chip-warning  { background:var(--warn-bg);    color:var(--warn);    border-color:var(--warn); }
+.chip-info     { background:var(--info-bg); color:var(--info); border-color:var(--info); }
+
+/* ── Toolbar controls ── */
+.tb-search {
+  flex:1 1 220px; min-width:220px; max-width:340px;
+  padding:.4rem .7rem; font-size:.82rem;
+  background:var(--panel); border:1px solid var(--border-mid);
+  border-radius:6px; color:var(--text); font-family:var(--font-ui);
+}
+.tb-search:focus { outline:none; border-color:var(--accent); }
+.tb-group { display:inline-flex; border:1px solid var(--border-mid); border-radius:6px; overflow:hidden; }
+.tb-group button {
+  padding:.38rem .7rem; font-size:.76rem; font-weight:600; border:none;
+  background:var(--panel); color:var(--muted); cursor:pointer; font-family:var(--font-ui);
+}
+.tb-group button.on { background:var(--accent); color:#fff; }
+.tb-toggle {
+  display:inline-flex; align-items:center; gap:.3rem; font-size:.76rem;
+  color:var(--muted); cursor:pointer; user-select:none; white-space:nowrap;
+}
+.tb-toggle input { accent-color:var(--accent); cursor:pointer; }
+
+
+/* ── Sidebar tree ── */
+.tree-section {
+  display:flex; align-items:center; gap:.35rem; width:100%;
+  padding:.5rem .8rem .3rem; border:none; background:none; cursor:pointer;
+  font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.09em;
+  color:var(--muted); text-align:left; font-family:var(--font-ui);
+}
+.tree-section:hover { color:var(--text); background:var(--panel); }
+.ts-chev { font-size:.6rem; flex-shrink:0; width:.7rem; }
+.ts-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  line-height:1.5; padding-bottom:1px; }  /* room for underscores (descenders) */
+.side-head {
+  display:flex; align-items:center; gap:.25rem; padding:.4rem .5rem;
+  border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:1;
+}
+.side-btn {
+  border:1px solid var(--border-mid); background:var(--panel); color:var(--muted);
+  font-size:.66rem; font-weight:600; padding:.18rem .45rem; border-radius:5px; cursor:pointer;
+  font-family:var(--font-ui); white-space:nowrap;
+}
+.side-btn:hover { color:var(--text); border-color:var(--accent); }
+.rpt-body.side-collapsed .rpt-side { width:34px; }
+.side-rail {
+  width:100%; height:100%; min-height:120px; border:none; background:none; cursor:pointer;
+  color:var(--muted); font-size:.8rem;
+}
+.side-rail:hover { color:var(--accent); background:var(--panel); }
+.tree-node {
+  display:flex; align-items:center; gap:.45rem; width:100%;
+  padding:.4rem .8rem; border:none; background:none; cursor:pointer;
+  font-size:.8rem; color:var(--text-2); text-align:left; font-family:var(--font-ui);
+  border-left:3px solid transparent;
+}
+.tree-node:hover { background:var(--panel); }
+.tree-node.on { background:var(--panel); border-left-color:var(--accent); color:var(--text); font-weight:600; }
+.tree-node .tn-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.5; }
+.tree-node.lvl2 { padding-left:1.6rem; }
+.tn-count {
+  font-family:var(--font-mono); font-size:.66rem; font-weight:700;
+  padding:.1rem .4rem; border-radius:99px;
+  background:var(--panel); color:var(--muted);
+  border:1px solid var(--border);
+}
+.tn-count.c-critical { background:var(--critical-bg); color:var(--critical); border-color:var(--critical); }
+.tn-count.c-error    { background:var(--danger-bg); color:var(--danger); border-color:var(--danger-br); }
+.tn-count.c-warning  { background:var(--warn-bg);   color:var(--warn);   border-color:var(--warn-br); }
+
+/* ── Verdict banner ── */
+.verdict {
+  display:flex; align-items:center; gap:.8rem; padding:.9rem 1.1rem;
+  border-radius:var(--radius); margin-bottom:.75rem;
+  border:1px solid var(--border); background:var(--surface); font-size:.9rem;
+}
+.verdict.ok   { border-color:var(--success-br); background:var(--success-bg); color:var(--success); }
+.verdict.bad  { border-color:var(--danger-br);  background:var(--danger-bg);  color:var(--danger); }
+.verdict.warn { border-color:var(--warn-br);    background:var(--warn-bg);    color:var(--warn); }
+.verdict .v-icon { font-size:1.3rem; }
+.verdict .v-main { font-weight:700; }
+.verdict .v-sub  { font-size:.78rem; opacity:.85; }
+.verdict .v-warn { font-size:.76rem; font-weight:700; margin-top:.2rem; }
+.export-group { display:inline-flex; gap:.3rem; }
+
+/* ── Finding groups ── */
+.fgroup {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); margin-bottom:.6rem; overflow:hidden;
+}
+.fgroup-hdr {
+  display:flex; align-items:center; gap:.6rem; padding:.55rem .9rem;
+  cursor:pointer; user-select:none;
+}
+.fgroup-hdr:hover { background:var(--panel); }
+.fg-chev { font-size:.7rem; color:var(--muted); transition:transform .15s; }
+.fgroup.open .fg-chev { transform:rotate(90deg); }
+.fg-title { font-weight:600; font-size:.86rem; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fg-code { font-family:var(--font-mono); font-size:.7rem; font-weight:800; flex-shrink:0; }
+.fg-sub   { font-size:.72rem; color:var(--muted); }
+.fg-spacer { flex:1; }
+.fgroup-body { display:none; border-top:1px solid var(--border); }
+.fgroup.open .fgroup-body { display:block; }
+
+/* ── Finding rows ── */
+.fi {
+  display:flex; align-items:flex-start; gap:.55rem;
+  padding:.45rem .9rem; border-bottom:1px solid var(--border);
+  font-size:.8rem;
+}
+.fi:last-child { border-bottom:none; }
+.fi-sev {
+  font-family:var(--font-mono); font-size:.62rem; font-weight:800;
+  padding:.12rem .3rem; border-radius:4px; flex:0 0 52px; text-align:center;
+  margin-top:.1rem; cursor:help;
+}
+.fi-sev.s-critical { background:var(--critical-bg); color:var(--critical); }
+.fi-sev.s-error    { background:var(--danger-bg); color:var(--danger); }
+.fi-sev.s-warning  { background:var(--warn-bg);   color:var(--warn); }
+.fi-sev.s-info     { background:var(--panel);     color:var(--muted); }
+.fi-loc {
+  font-family:var(--font-mono); font-size:.72rem; color:var(--accent);
+  flex:0 0 240px; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; margin-top:.12rem; cursor:default;
+}
+.fi-msg { flex:1; color:var(--text-2); line-height:1.45; min-width:0; overflow-wrap:anywhere; }
+.fi.suppressed { opacity:.5; }
+.fi.suppressed .fi-msg::after { content:" (suppressed in source)"; font-style:italic; color:var(--muted); font-size:.72rem; }
+
+/* ── Hardware view ── */
+.lc-fresh {
+  display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;
+  font-size:.76rem; color:var(--text-2); padding:.6rem .9rem;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); margin-bottom:.6rem;
+}
+.lc-fresh b { color:var(--text); }
+.lc-unverified { color:var(--warn); }
+.lc-badge {
+  font-family:var(--font-mono); font-size:.66rem; font-weight:700;
+  padding:.14rem .42rem; border-radius:4px; border:1px solid;
+}
+.lc-badge-active { background:var(--success-bg); color:var(--success); border-color:var(--success-br); }
+.lc-badge-mature { background:var(--warn-bg);    color:var(--warn);    border-color:var(--warn-br); }
+.lc-badge-eol    { background:var(--warn-bg);    color:var(--warn);    border-color:var(--warn-br); }
+.lc-badge-disc   { background:var(--danger-bg);  color:var(--danger);  border-color:var(--danger-br); }
+.hw-table-wrap {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); overflow-x:auto;
+}
+
+/* ── Empty / info states ── */
+.empty-state { padding:2rem 1rem; text-align:center; color:var(--muted); font-size:.85rem; }
+
+/* ── Centred loading overlay ── */
+.busy { position:fixed; inset:0; z-index:950; display:none; align-items:center; justify-content:center;
+  background:rgba(15,23,42,.35); }
+.busy.show { display:flex; }
+.busy-box { display:flex; flex-direction:column; align-items:center; gap:.7rem; min-width:260px; max-width:90vw;
+  padding:1.6rem 2rem; border-radius:14px; background:var(--surface); border:1px solid var(--border);
+  box-shadow:0 12px 40px rgba(0,0,0,.25); text-align:center; }
+.busy-box .ring-pct { font-size:16px; }
+.busy-phase { font-weight:600; color:var(--text); font-size:.95rem; }
+.busy-sub { font-size:.8rem; color:var(--muted); max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ── Back to top ── */
+.to-top {
+  position:fixed; right:1.5rem; bottom:1.5rem; z-index:900;
+  width:2.6rem; height:2.6rem; border-radius:50%;
+  border:1px solid var(--border-mid); background:var(--accent); color:#fff;
+  font-size:1.1rem; font-weight:700; cursor:pointer; box-shadow:var(--shadow-md, 0 4px 12px rgba(0,0,0,.15));
+  opacity:0; pointer-events:none; transform:translateY(8px); transition:opacity .2s, transform .2s;
+}
+.to-top.show { opacity:.9; pointer-events:auto; transform:none; }
+.to-top:hover { opacity:1; }
+
+/* ── Print ── */
+@media print {
+  .topbar, .rpt-toolbar, .rpt-side, .batch-bar, .drop-full, .to-top { display:none !important; }
+  .rpt-body { display:block; }
+  .fgroup { break-inside:avoid; border-color:#bbb; }
+  .fgroup-body { display:block !important; }
+  body { background:#fff; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ════════ Upload ════════ -->
+<div id="upload-wrap">
+  <div class="drop-full" id="drop-zone">
+    <div class="drop-icon">⬆</div>
+    <p class="drop-label">Drop your .l5x file(s) here</p>
+    <p class="drop-sub">Full controller export · multiple files = batch mode</p>
+    <button class="btn btn-primary" onclick="event.stopPropagation();document.getElementById('fi').click()">Browse Files</button>
+  </div>
+  <input type="file" id="fi" accept=".l5x,.L5X" multiple style="display:none"/>
+  <div class="status-line" id="sl">
+  </div>
+</div>
+
+<button id="to-top" class="to-top" title="Back to top" aria-label="Back to top"
+        onclick="window.scrollTo({top:0, behavior:'smooth'})">↑</button>
+
+<div id="busy" class="busy" aria-live="polite"><div class="busy-box" id="busy-box"></div></div>
+
+<!-- ════════ Report ════════ -->
+<div id="rpt" style="display:none">
+  <div id="batch-bar-slot"></div>
+  <div id="verdict-slot"></div>
+  <div class="rpt-toolbar" id="toolbar"></div>
+  <div class="rpt-body">
+    <nav class="rpt-side" id="sidebar"></nav>
+    <div class="rpt-main" id="main"></div>
+  </div>
+</div>
+
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+"use strict";
+/* ════════════════════════════════════════════════════════════════════
+   State-driven report UI.
+   One state object S; actions mutate S then call render().
+   Render functions are pure reads of S — no hidden DOM state.
+══════════════════════════════════════════════════════════════════════ */
+
+var S = {
+  sid: null,            // active session id (null in read-only loaded mode)
+  fileName: '',
+  report: null,         // raw report from backend
+  findings: [],         // flattened + scoped (see flatten())
+  filters: {
+    sev: { CRITICAL:true, ERROR:true, WARNING:true, INFO:true },
+    q: '',
+    showSuppressed: false,
+    scope: 'all',       // 'all' | 'ctrl' | 'prog:Name' | 'aoi:Name'
+  },
+  groupBy: 'rule',      // 'rule' | 'location'
+  sideCollapsed: false, // whole side pane hidden
+  closedSections: {},   // tree section key -> true when collapsed
+  view: 'findings',     // 'findings' | 'hardware'
+  batch: null,          // {rows:[{filename,session_id,counts,...}]} or null
+};
+
+var STORE_KEY = 'l5xlint.session';
+var MISSING_DEPS = {{ missing_deps|tojson }};   // fmt -> python package not installed
+var RULE_DESC = {{ rule_desc|tojson }};   // code -> description (from rules.py)
+var SEV_ORDER = { CRITICAL:0, ERROR:1, WARNING:2, INFO:3 };
+var SEV_CODE = { CRITICAL:'CRT', ERROR:'ERR', WARNING:'WAR', INFO:'INF' };
+var SEV_NAME = { CRITICAL:'Critical', ERROR:'Error', WARNING:'Warning', INFO:'Info' };
+
+
+function X(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+/* Escape a value for embedding inside a single-quoted JS string that
+   itself lives inside an HTML attribute. Order matters: backslash-escape
+   for JS first, THEN HTML-escape. The browser decodes entities before
+   the JS engine parses, so \&#39; round-trips to a valid \' — whereas
+   X() alone hands JS a raw quote and an unterminated string. */
+function JS(s){ return X(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
+
+/* ════════ Flatten report → findings[] with scope keys ════════ */
+function flatten(report){
+  var out = [], seen = {};
+  function push(f, scope){
+    if (!f || typeof f !== 'object') return;
+    var k = (f.check_id||'')+'|'+(f.location||'')+'|'+(f.message||'');
+    if (seen[k]) return;
+    seen[k] = 1;
+    f._scope = scope;
+    f._suppressed = false;
+    out.push(f);
+  }
+  (report.controller_findings||[]).forEach(function(f){ push(f,'ctrl'); });
+  (report.task_program_tabs||[]).forEach(function(tab){
+    var scope = 'prog:'+(tab.prog_name||'?');
+    var s = tab.sections||{};
+    ['unused_tags','no_desc','other'].forEach(function(b){
+      (s[b]||[]).forEach(function(f){ push(f,scope); });
+    });
+    Object.keys(s.routines||{}).forEach(function(r){
+      (s.routines[r]||[]).forEach(function(f){ push(f,scope); });
+    });
+  });
+  (report.aoi_sections||[]).forEach(function(aoi){
+    var scope = 'aoi:'+(aoi.name||'?');
+    ['no_desc','ctrl_tag','other'].forEach(function(b){
+      (aoi[b]||[]).forEach(function(f){ push(f,scope); });
+    });
+    Object.keys(aoi.routines||{}).forEach(function(r){
+      (aoi.routines[r]||[]).forEach(function(f){ push(f,scope); });
+    });
+  });
+  // Suppressed findings: included but flagged; scope inferred from location.
+  (report.suppressed_findings||[]).forEach(function(f){
+    if (!f) return;
+    var k = 'sup|'+(f.check_id||'')+'|'+(f.location||'');
+    if (seen[k]) return;
+    seen[k]=1;
+    f._scope = scopeFromLocation(f.location||'');
+    f._suppressed = true;
+    out.push(f);
+  });
+  return out;
+}
+
+function scopeFromLocation(loc){
+  if (loc.indexOf('Controller:')===0 || loc.indexOf('Module:')===0 ||
+      loc.indexOf('Task:')===0 || loc.indexOf('DataType:')===0 || loc==='Config') return 'ctrl';
+  if (loc.indexOf('AOI:')===0) return 'aoi:'+loc.slice(4).split('.')[0].split(' /')[0];
+  var m = loc.match(/^([^:\/]+?)\s*[\/:]/);
+  return m ? 'prog:'+m[1].trim() : 'ctrl';
+}
+
+/* ════════ Filtering ════════ */
+function visibleFindings(){
+  var f = S.filters, q = f.q.toLowerCase();
+  return S.findings.filter(function(x){
+    if (x._suppressed && !f.showSuppressed) return false;
+    if (!f.sev[x.severity]) return false;
+    if (f.scope !== 'all' && x._scope !== f.scope) return false;
+    if (q && (x.message||'').toLowerCase().indexOf(q)<0
+          && (x.location||'').toLowerCase().indexOf(q)<0
+          && (x.check_name||'').toLowerCase().indexOf(q)<0
+          && (x.check_id||'').toLowerCase().indexOf(q)<0
+          && (x.code||'').toLowerCase().indexOf(q)<0) return false;
+    return true;
+  });
+}
+
+/* ════════ Render root ════════ */
+function render(){
+  renderBatchBar();
+  renderVerdict();
+  renderToolbar();
+  renderSidebar();
+  renderMain();
+}
+
+/* ── Verdict banner ── */
+function renderVerdict(){
+  var slot = document.getElementById('verdict-slot');
+  if (!S.report){ slot.innerHTML=''; return; }
+  var c = S.report.severity_counts||{};
+  var crit=(c.CRITICAL||0), err=(c.ERROR||0), warn=(c.WARNING||0), info=(c.INFO||0);
+  var meta = S.report.meta||{};
+  var sup = S.report.suppressed_count||0;
+  var cls, icon, main, sub;
+  if (crit>0){ cls='bad'; icon='⛔'; main = crit+' critical issue'+(crit>1?'s':'')+' — do not download to a controller until reviewed.'; }
+  else if (err>0){ cls='bad'; icon='✖'; main = err+' error'+(err>1?'s':'')+' found.'; }
+  else if (warn>0){ cls='warn'; icon='⚠'; main = warn+' warning'+(warn>1?'s':'')+', no errors.'; }
+  else { cls='ok'; icon='✔'; main='No issues at warning level or above.'; }
+  sub = X(meta.controller_name||'')+' · '+X(meta.firmware||'')+' · '
+      + (meta.program_count||0)+' programs · '+(meta.rung_count||0)+' rungs'
+      + (info? ' · '+info+' info note'+(info>1?'s':'') : '')
+      + (sup ? ' · '+sup+' suppressed in source' : '')
+      ;
+  var warns = [];
+  if (meta.protected_routines) warns.push(meta.protected_routines+' protected routine'+(meta.protected_routines>1?'s':'')+' (source/license protected) not analysed');
+  if (meta.encoded_aois) warns.push(meta.encoded_aois+' encoded AOI definition'+(meta.encoded_aois>1?'s':'')+' not analysed');
+  if (meta.non_rll_routines) warns.push(meta.non_rll_routines+' non-ladder routine'+(meta.non_rll_routines>1?'s':'')+' (FBD/SFC/ST) not analysed');
+  (S.report.rule_errors||[]).forEach(function(e){ warns.push('Rule failed to run: '+e); });
+  slot.innerHTML =
+    '<div class="verdict '+cls+'"><span class="v-icon">'+icon+'</span>'+
+    '<div><div class="v-main">'+main+'</div><div class="v-sub">'+sub+'</div>'+
+    warns.map(function(w){ return '<div class="v-warn">⚠ '+X(w)+'</div>'; }).join('')+
+    '</div></div>';
+}
+
+/* ── Toolbar ── */
+function renderToolbar(){
+  var tb = document.getElementById('toolbar');
+  if (!S.report){ tb.innerHTML=''; return; }
+  var c = S.report.severity_counts||{};
+  var supCount = (S.report.suppressed_findings||[]).length || S.report.suppressed_count || 0;
+  var chips = ['CRITICAL','ERROR','WARNING','INFO'].map(function(sv){
+    var n = c[sv]||0;
+    return '<span class="chip chip-'+sv.toLowerCase()+(S.filters.sev[sv]?' on':'')+'" '+
+      'title="'+SEV_NAME[sv]+' — '+n+' finding'+(n===1?'':'s')+'. Click to show/hide." '+
+      'onclick="actToggleSev(\''+sv+'\')">'+SEV_CODE[sv]+' '+n+'</span>';
+  }).join('');
+  function expBtn(fmt, label){
+    var miss = MISSING_DEPS[fmt];
+    if (miss) return '<button class="btn btn-outline btn-sm" disabled title="Needs the Python package \''+miss+
+      '\' — run: pip install -r requirements.txt, then restart">'+label+'</button>';
+    return '<button class="btn btn-outline btn-sm" id="exp-'+fmt+'" title="Download a '+(fmt==='pdf'?'PDF':'Excel')+
+      ' report of the findings currently shown (by severity filter)" onclick="exportReport(\''+fmt+'\')">'+label+'</button>';
+  }
+  var exportBtns = S.sid
+    ? '<span class="export-group">'+expBtn('xlsx','⬇ Excel')+expBtn('pdf','⬇ PDF')+'</span>'
+    : '<span class="export-group" title="Reports need the original L5X — re-upload it to export.">'+
+        '<button class="btn btn-outline btn-sm" disabled>⬇ Excel</button><button class="btn btn-outline btn-sm" disabled>⬇ PDF</button></span>';
+  tb.innerHTML =
+    chips +
+    '<input class="tb-search" type="search" placeholder="Filter: code, rule, tag, message…" '+
+      'title="Filter by rule code (ERR010), rule name, tag, location or message text" '+
+      'value="'+X(S.filters.q)+'" oninput="actSearch(this.value)"/>'+
+    '<span class="tb-group">'+
+      '<button class="'+(S.groupBy==='rule'?'on':'')+'" title="One group per rule" onclick="actGroupBy(\'rule\')">By rule</button>'+
+      '<button class="'+(S.groupBy==='location'?'on':'')+'" title="One group per program / AOI / controller" onclick="actGroupBy(\'location\')">By location</button>'+
+    '</span>'+
+    '<span class="tb-group">'+
+      '<button class="'+(S.view==='findings'?'on':'')+'" onclick="actView(\'findings\')">Findings</button>'+
+      '<button class="'+(S.view==='hardware'?'on':'')+'" title="I/O modules and lifecycle status" onclick="actView(\'hardware\')">Hardware</button>'+
+    '</span>'+
+    (supCount ? '<label class="tb-toggle" title="Show findings silenced with lint:disable in rung comments or descriptions"><input type="checkbox" '+(S.filters.showSuppressed?'checked':'')+
+      ' onchange="actShowSuppressed(this.checked)"/> Show '+supCount+' suppressed</label>' : '')+
+    '<span style="flex:1"></span>'+ exportBtns +
+    '<button class="btn btn-outline btn-sm" title="Close this report and load another L5X file" onclick="backToUpload()">⟲ New file</button>';
+}
+
+/* ── Sidebar tree ── */
+function renderSidebar(){
+  var sb = document.getElementById('sidebar');
+  var body = document.querySelector('.rpt-body');
+  if (!S.report){ sb.innerHTML=''; return; }
+  if (body) body.classList.toggle('side-collapsed', !!S.sideCollapsed);
+  if (S.sideCollapsed){
+    sb.innerHTML = '<button class="side-rail" title="Show side panel" onclick="actSide(false)">▶</button>';
+    return;
+  }
+  var head = '<div class="side-head">'+
+      '<button class="side-btn" title="Expand all sections" onclick="actAllSections(false)">⊞ Expand</button>'+
+      '<button class="side-btn" title="Collapse all sections" onclick="actAllSections(true)">⊟ Collapse</button>'+
+      '<span style="flex:1"></span>'+
+      '<button class="side-btn" title="Hide side panel" onclick="actSide(true)">◀ Hide</button>'+
+    '</div>';
+  if (S.view!=='findings'){
+    sb.innerHTML = head.replace(/<button class="side-btn" title="(Expand|Collapse)[^]*?<\/button>/g,'') +
+      '<div class="empty-state" style="padding:1rem .8rem;font-size:.76rem">Hardware view shows all I/O modules — the tree applies to findings.</div>';
+    return;
+  }
+
+  // Count visible findings per scope (respecting all filters EXCEPT scope)
+  var saveScope = S.filters.scope;
+  S.filters.scope = 'all';
+  var vis = visibleFindings();
+  S.filters.scope = saveScope;
+
+  var per = {};   // scope -> {n, worst}
+  vis.forEach(function(f){
+    var p = per[f._scope] || (per[f._scope]={n:0, worst:9});
+    p.n++; p.worst = Math.min(p.worst, SEV_ORDER[f.severity] ?? 9);
+  });
+  function badge(n, worst){
+    if (!n) return '';
+    var cls = worst===0?'c-critical':worst===1?'c-error':worst===2?'c-warning':'';
+    return '<span class="tn-count '+cls+'">'+n+'</span>';
+  }
+  function countBadge(scope){ var p = per[scope]; return p ? badge(p.n, p.worst) : ''; }
+
+  var html = head;
+  html += node('all', 'All Findings', '<span class="tn-count">'+vis.length+'</span>', 1);
+  html += node('ctrl', 'Controller', countBadge('ctrl'), 1);
+
+  var sections = [];
+  var byTask = {}, order = [];
+  (S.report.task_program_tabs||[]).forEach(function(t){
+    var task = t.task_name||'(unscheduled)';
+    if (!byTask[task]){ byTask[task] = []; order.push(task); }
+    byTask[task].push(t.prog_name);
+  });
+  order.forEach(function(task){
+    sections.push({key:'task:'+task, label:task, items:byTask[task].map(function(p){ return {key:'prog:'+p, name:p}; })});
+  });
+  var aois = S.report.aoi_sections||[];
+  if (aois.length)
+    sections.push({key:'aois', label:'Add-On Instructions', items:aois.map(function(a){ return {key:'aoi:'+a.name, name:a.name}; })});
+
+  sections.forEach(function(sec){
+    var n = 0, worst = 9;
+    sec.items.forEach(function(it){ var p = per[it.key]; if (p){ n += p.n; worst = Math.min(worst, p.worst); } });
+    var closed = !!S.closedSections[sec.key];
+    html += '<button class="tree-section'+(closed?' closed':'')+'" title="'+X(sec.label)+' — '+sec.items.length+' item'+(sec.items.length===1?'':'s')+'. Click to '+(closed?'expand':'collapse')+'." '+
+            'onclick="actSection(\''+JS(sec.key)+'\')">'+
+            '<span class="ts-chev">'+(closed?'▶':'▼')+'</span>'+
+            '<span class="ts-label">'+X(sec.label)+'</span>'+badge(n, worst)+'</button>';
+    if (!closed) sec.items.forEach(function(it){ html += node(it.key, it.name, countBadge(it.key), 2); });
+  });
+  sb.innerHTML = html;
+
+  function node(key, name, b, lvl){
+    return '<button class="tree-node'+(lvl===2?' lvl2':'')+(S.filters.scope===key?' on':'')+'" '+
+      'onclick="actScope(\''+JS(key)+'\')">'+
+      '<span class="tn-name" title="'+X(name)+'">'+X(name)+'</span>'+b+'</button>';
+  }
+}
+function actSide(collapsed){ S.sideCollapsed = collapsed; renderSidebar(); }
+function actSection(key){ S.closedSections[key] = !S.closedSections[key]; renderSidebar(); }
+function actAllSections(close){
+  var keys = ['aois'];
+  (S.report.task_program_tabs||[]).forEach(function(t){ keys.push('task:'+(t.task_name||'(unscheduled)')); });
+  S.closedSections = {};
+  if (close) keys.forEach(function(k){ S.closedSections[k] = true; });
+  renderSidebar();
+}
+
+/* ── Main pane ── */
+function renderMain(){
+  var m = document.getElementById('main');
+  if (!S.report){ m.innerHTML=''; return; }
+  if (S.view==='hardware'){ m.innerHTML = hardwareHTML(); return; }
+
+  var vis = visibleFindings();
+  if (!vis.length){
+    var anyAtAll = S.findings.some(function(f){ return !f._suppressed; });
+    m.innerHTML = '<div class="fgroup open"><div class="empty-state">'+
+      (anyAtAll ? 'No findings match the current filters.' :
+        'This file is clean — nothing to show. Nice.')+'</div></div>';
+    return;
+  }
+
+  // Group
+  var groups = {};
+  vis.forEach(function(f){
+    var key, title, sub;
+    if (S.groupBy==='rule'){
+      key = f.code||f.check_id||'unknown';
+      title = f.check_name||key;
+      sub = key;
+    } else {
+      key = f._scope;
+      title = key==='ctrl' ? 'Controller' : key.replace(/^prog:/,'').replace(/^aoi:/,'AOI: ');
+      sub = '';
+    }
+    var g = groups[key] || (groups[key]={key:key,title:title,sub:sub,items:[],worst:9});
+    g.items.push(f);
+    g.worst = Math.min(g.worst, SEV_ORDER[f.severity] ?? 9);
+  });
+
+  var sorted = Object.values(groups).sort(function(a,b){
+    return (a.worst-b.worst) || (b.items.length-a.items.length);
+  });
+
+  m.innerHTML = sorted.map(function(g, i){
+    g.items.sort(function(a,b){ return (SEV_ORDER[a.severity]??9)-(SEV_ORDER[b.severity]??9); });
+    var open = i===0 || sorted.length<=3 ? ' open' : '';
+    return '<div class="fgroup'+open+'" data-gkey="'+X(g.key)+'">'+
+      '<div class="fgroup-hdr" onclick="this.parentElement.classList.toggle(\'open\')">'+
+        '<span class="fg-chev">▶</span>'+
+        (S.groupBy==='rule' ? '<span class="fg-code fi-sev s-'+(g.items[0].severity||'info').toLowerCase()+'" title="'+X(SEV_NAME[g.items[0].severity]||'')+'">'+X(g.key)+'</span>' : '')+
+        '<span class="fg-title" title="'+X(g.title)+(RULE_DESC[g.key]?' — '+X(RULE_DESC[g.key]):'')+'">'+X(g.title)+'</span>'+
+        (S.groupBy==='rule' && RULE_DESC[g.key] ? '' : (g.sub && S.groupBy!=='rule' ?'<span class="fg-sub mono">'+X(g.sub)+'</span>':''))+
+        '<span class="fg-spacer"></span>'+
+        '<span class="tn-count '+(g.worst===0?'c-critical':g.worst===1?'c-error':g.worst===2?'c-warning':'')+'">'+
+          g.items.length+'</span>'+
+      '</div>'+
+      '<div class="fgroup-body">'+g.items.map(fiHTML).join('')+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+/* ── One finding row ── */
+function fiHTML(f){
+  var code = f.code || SEV_CODE[f.severity] || '?';
+  var sevTip = (SEV_NAME[f.severity]||f.severity||'')+' — '+(f.check_name||'')+
+               (RULE_DESC[code] ? '\n'+RULE_DESC[code] : '');
+  return '<div class="fi'+(f._suppressed?' suppressed':'')+'">'+
+    '<span class="fi-sev s-'+(f.severity||'info').toLowerCase()+'" title="'+X(sevTip)+'">'+X(code)+'</span>'+
+    '<span class="fi-loc" title="'+X(f.location||'')+'">'+X(f.location||'')+'</span>'+
+    '<span class="fi-msg">'+X(f.message||'')+'</span>'+
+  '</div>';
+}
+
+/* ── Hardware view ── */
+function hardwareHTML(){
+  var mods = S.report.modules||[];
+  var lcInfo = (S.report.meta||{}).lifecycle || {};
+  var lcOff = !!lcInfo.disabled;
+  var fresh, tools = '';
+  if (lcOff){
+    fresh = 'Lifecycle checks are switched off. <a href="/settings#lifecycle">Turn them on in Settings.</a>';
+  } else if (lcInfo.available){
+    fresh = 'Lifecycle data as of <b>'+X(lcInfo.scraped_at||'?')+'</b> · '+(lcInfo.count||0)+' catalogs'+
+      (lcInfo.verified ? '' : ' · <span class="lc-unverified">verify against PCDC before procurement decisions</span>')+
+      ' · <a href="/settings#lifecycle">update dataset</a>';
+  } else {
+    fresh = '<span class="lc-unverified">No lifecycle dataset loaded — module status checks inactive.</span> '+
+      '<a href="/settings#lifecycle">Import one in Settings.</a>';
+  }
+  if (!lcOff && S.sid && mods.length)
+    tools = '<span style="flex:1"></span><button class="btn btn-outline btn-sm" '+
+      'title="Excel sheet of this project\u2019s catalogs, to refresh their lifecycle status (e.g. with an online assistant) and import back in Settings" '+
+      'onclick="lifecycleSheet()">⬇ Lifecycle sheet</button>';
+  if (!mods.length){
+    return '<div class="lc-fresh">'+fresh+'</div><div class="fgroup open"><div class="empty-state">No I/O modules in this export.</div></div>';
+  }
+  var rows = mods.map(function(m){
+    var rec = m.lifecycle||{};
+    var lc = lcStyle(rec.status||'');
+    var lcCells = lcOff ? '' :
+      '<td><span class="'+lc.badge+'" title="'+X((rec.note||'')+(rec.source_url ? '\nSource: '+rec.source_url : ''))+'">'+lc.label+'</span>'+
+        (rec.status && rec.status!=='Unknown' && !rec.sourced ? ' <span class="lc-unverified" title="No source URL for this entry">unverified</span>' : '')+'</td>'+
+      '<td class="mono">'+X(rec.eol_date||'—')+'</td>'+
+      '<td class="mono">'+X(rec.replacement||'—')+'</td>';
+    return '<tr>'+
+      '<td class="mono">'+X(m.catalog||'')+'</td>'+
+      '<td>'+X(m.name||'')+'</td>'+
+      '<td class="mono">'+(m.slot??'—')+'</td>'+
+      '<td class="mono">'+X(m.parent||'—')+'</td>'+ lcCells + '</tr>';
+  }).join('');
+  return '<div class="lc-fresh">'+fresh+tools+'</div>'+
+    '<div class="hw-table-wrap"><table class="tbl">'+
+    '<thead><tr><th>Catalog</th><th>Name</th><th>Slot</th><th>Parent</th>'+
+    (lcOff ? '' : '<th>Lifecycle</th><th>EOL Date</th><th>Replacement</th>')+'</tr></thead>'+
+    '<tbody>'+rows+'</tbody></table></div>';
+}
+
+function lifecycleSheet(){
+  var a = Object.assign(document.createElement('a'),
+    {href:'/api/lifecycle/template.xlsx?scope=project&sid='+encodeURIComponent(S.sid)});
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function lcStyle(status){
+  var s=(status||'').toLowerCase().trim();
+  if (s==='active') return {badge:'lc-badge lc-badge-active', label:'Active'};
+  if (s==='active mature'||s==='mature') return {badge:'lc-badge lc-badge-mature', label:'Active Mature'};
+  if (s==='end of life'||s==='eol') return {badge:'lc-badge lc-badge-eol', label:'End of Life'};
+  if (s==='discontinued'||s==='disc') return {badge:'lc-badge lc-badge-disc', label:'Discontinued'};
+  return {badge:'lc-badge', label:'Unknown'};
+}
+</script>
+<script>
+"use strict";
+/* ════════ Actions ════════ */
+function actToggleSev(sv){ S.filters.sev[sv]=!S.filters.sev[sv]; render(); }
+function actSearch(q){
+  S.filters.q=q;
+  // Re-render only sidebar+main; keep focus in the search box.
+  renderSidebar(); renderMain();
+}
+function actGroupBy(g){ S.groupBy=g; render(); }
+function actView(v){ S.view=v; render(); }
+function actScope(sc){ S.filters.scope = (S.filters.scope===sc && sc!=='all') ? 'all' : sc; render(); }
+function actShowSuppressed(on){ S.filters.showSuppressed=on; render(); }
+
+
+/* ════════ Export (Excel / PDF) + load ════════ */
+function exportReport(fmt){
+  if (!S.sid) return;
+  var sev = ['CRITICAL','ERROR','WARNING','INFO'].filter(function(k){ return S.filters.sev[k]; });
+  if (!sev.length){ alert('All severities are hidden — turn at least one on to export.'); return; }
+  var btn = document.getElementById('exp-'+fmt), label = btn ? btn.textContent : '';
+  if (btn){ btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+  var done = function(){ if (btn){ btn.disabled = false; btn.textContent = label; } };
+  fetch('/report/'+encodeURIComponent(S.sid)+'.'+fmt+'?sev='+sev.join(',')+
+        '&q='+encodeURIComponent(S.filters.q||'')+'&scope='+encodeURIComponent(S.filters.scope||'all'))
+    .then(function(r){
+      if (!r.ok) return r.json().catch(function(){ return {}; })
+        .then(function(j){ throw new Error(j.error || ('HTTP '+r.status)); });
+      var disp = r.headers.get('Content-Disposition')||'';
+      var m = disp.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+      var name = m ? decodeURIComponent(m[1]) : ('lint_report.'+fmt);
+      return r.blob().then(function(b){ return {b:b, name:name}; });
+    })
+    .then(function(x){
+      var url = URL.createObjectURL(x.b);
+      var a = Object.assign(document.createElement('a'), {href:url, download:x.name});
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+      done();
+    })
+    .catch(function(e){ done(); alert('Export failed: '+e.message); });
+}
+
+/* ════════ Upload + stream ════════ */
+/* Progress ring. pct = 0..100 → determinate with % inside;
+   pct = null → indeterminate spinning arc (upload, batch transfer). */
+function ringHTML(pct, size){
+  size = size || 52;
+  var r = size/2 - 5, c = +(2*Math.PI*r).toFixed(1), det = (pct != null);
+  var off = det ? (c * (1 - Math.max(0, Math.min(100, pct))/100)).toFixed(1) : (c*0.72).toFixed(1);
+  return '<svg class="ring'+(det?'':' indet')+'" width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" aria-hidden="true">'+
+    '<circle class="ring-track" cx="'+size/2+'" cy="'+size/2+'" r="'+r+'" fill="none" stroke-width="5"/>'+
+    '<circle class="ring-arc" cx="'+size/2+'" cy="'+size/2+'" r="'+r+'" fill="none" stroke-width="5" stroke-linecap="round" '+
+      'stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'" transform="rotate(-90 '+size/2+' '+size/2+')"/>'+
+    (det ? '<text class="ring-pct" x="50%" y="50%" dy=".35em" text-anchor="middle">'+Math.round(pct)+'%</text>' : '')+
+  '</svg>';
+}
+
+function stat(kind, phase, pct, sub){
+  var sl = document.getElementById('sl'), busy = document.getElementById('busy');
+  if (kind === 'spin'){
+    // Work in progress: large ring, centred over the page.
+    document.getElementById('busy-box').innerHTML = ringHTML(pct, 96) +
+      '<div class="busy-phase">'+X(phase)+'</div>' +
+      (sub ? '<div class="busy-sub" title="'+X(sub)+'">'+X(sub)+'</div>' : '');
+    busy.classList.add('show');
+    sl.classList.remove('show'); sl.innerHTML = '';
+    return;
+  }
+  busy.classList.remove('show');
+  if (!phase && !kind){ sl.classList.remove('show'); sl.innerHTML=''; return; }
+  sl.classList.add('show');
+  sl.innerHTML = '<span class="sl-icon">'+(kind==='err' ? '✖' : kind==='ok' ? '✔' : '')+'</span>'+
+                 '<span class="sl-phase">'+X(phase)+'</span>';
+}
+
+function go(file){
+  if (!file.name.toLowerCase().endsWith('.l5x')){
+    stat('err','Only .l5x files are supported.',''); return;
+  }
+  S.batch = S.batch; // keep batch context if we're inside one
+  S.fileName=file.name;
+  stat('spin','Uploading', null, S.fileName);
+  var fd=new FormData(); fd.append('file',file);
+  fetch('/upload',{method:'POST',body:fd})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.success){ stat('err',d.error||'Upload failed',''); return; }
+      S.sid=d.session_id;
+      stream(d.session_id);
+    })
+    .catch(function(e){ stat('err','Upload failed: '+e.message,''); });
+}
+
+function stream(sid, sub){
+  stat('spin', 'Starting analysis', 0, sub || S.fileName);
+  var es=new EventSource('/stream/'+sid);
+  es.onmessage=function(ev){
+    var d; try{ d=JSON.parse(ev.data); }catch(_){ return; }
+    if (d.type==='progress'){
+      stat('spin', d.phase||'Analysing', d.pct||0, sub || S.fileName);
+    } else if (d.type==='error'){
+      es.close(); stat('err', d.message||'Analysis failed','');
+    } else if (d.type==='done'){
+      es.close(); stat('','','');
+      S.report=d.report;
+      S.findings=flatten(S.report);
+      showReport();
+    }
+  };
+  es.onerror=function(){ /* EventSource auto-reconnects; server replays */ };
+}
+
+function showReport(){
+  document.getElementById('upload-wrap').style.display='none';
+  document.getElementById('rpt').style.display='block';
+  // reset volatile filters but keep user's groupBy preference
+  S.filters.q=''; S.filters.scope='all'; S.view='findings';
+  S.filters.sev={CRITICAL:true,ERROR:true,WARNING:true,INFO:true};
+  render();
+  // Remember the live session so the report survives a trip to Settings.
+  try {
+    if (S.sid)
+      sessionStorage.setItem(STORE_KEY, JSON.stringify({sid:S.sid, name:S.fileName}));
+  } catch(e) {}
+}
+
+function backToUpload(){
+  try { sessionStorage.removeItem(STORE_KEY); } catch(e) {}
+  S.report=null; S.sid=null; S.findings=[]; S.batch=null;
+  document.getElementById('rpt').style.display='none';
+  document.getElementById('upload-wrap').style.display='block';
+  stat('','','');
+  window.scrollTo(0, 0);
+}
+
+/* ════════ Batch ════════ */
+function goBatch(files){
+  files=files.filter(function(f){ return f.name.toLowerCase().endsWith('.l5x'); });
+  if (!files.length){ stat('err','No .l5x files in selection.',''); return; }
+  stat('spin','Uploading '+files.length+' files', null);
+  var fd=new FormData();
+  files.forEach(function(f){ fd.append('files',f); });
+  fetch('/upload_batch',{method:'POST',body:fd})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.success){ stat('err',d.error,''); return; }
+      var sids=d.files.filter(function(x){return x.session_id;}).map(function(x){return x.session_id;});
+      stat('spin','Analysing '+sids.length+' files', null, 'Building the batch summary');
+      return fetch('/batch_summary',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({session_ids:sids})})
+        .then(function(r){ return r.json(); })
+        .then(function(s){
+          stat('','','');
+          S.batch={ rows: s.rows||[], failed: d.files.filter(function(x){return x.error;}) };
+          S.report=null; S.sid=null;
+          showBatchSummary();
+        });
+    })
+    .catch(function(e){ stat('err','Batch failed: '+e.message,''); });
+}
+
+function showBatchSummary(){
+  document.getElementById('upload-wrap').style.display='none';
+  document.getElementById('rpt').style.display='block';
+  document.getElementById('verdict-slot').innerHTML='';
+  document.getElementById('toolbar').innerHTML='';
+  document.getElementById('sidebar').innerHTML='';
+  renderBatchBar();
+  var rows = (S.batch.rows||[]).map(function(r){
+    if (r.error){
+      return '<tr><td class="mono">'+X(r.filename||r.session_id)+'</td>'+
+        '<td colspan="7" style="color:var(--danger)">'+X(r.error)+'</td></tr>';
+    }
+    var c=r.counts||{};
+    return '<tr>'+
+      '<td class="mono">'+X(r.filename)+'</td>'+
+      '<td>'+X(r.controller||'—')+'</td>'+
+      '<td>'+(c.CRITICAL||0)+'</td><td>'+(c.ERROR||0)+'</td>'+
+      '<td>'+(c.WARNING||0)+'</td><td>'+(c.INFO||0)+'</td>'+
+      '<td>'+(r.suppressed||0)+'</td>'+
+      '<td><button class="btn btn-outline btn-sm" onclick="openBatchItem(\''+JS(r.session_id)+'\',\''+JS(r.filename)+'\')">Open</button></td></tr>';
+  }).join('');
+  (S.batch.failed||[]).forEach(function(f){
+    rows += '<tr><td class="mono">'+X(f.filename)+'</td>'+
+      '<td colspan="7" style="color:var(--danger)">'+X(f.error)+'</td></tr>';
+  });
+  document.getElementById('main').innerHTML =
+    '<div class="hw-table-wrap"><table class="tbl">'+
+    '<thead><tr><th>File</th><th>Controller</th><th title="Critical">CRT</th><th title="Error">ERR</th><th title="Warning">WAR</th><th title="Info">INF</th><th title="Suppressed in source">Suppr.</th><th></th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table></div>';
+}
+
+function renderBatchBar(){
+  var slot=document.getElementById('batch-bar-slot');
+  if (!S.batch){ slot.innerHTML=''; return; }
+  var n=(S.batch.rows||[]).length;
+  var crumb = S.report
+    ? '<span class="crumb">Batch ('+n+' files) ▸ <b>'+X(S.fileName)+'</b></span>'
+    : '<span class="crumb"><b>Batch — '+n+' files</b></span>';
+  slot.innerHTML =
+    '<div class="batch-bar">'+
+      (S.report ? '<button class="btn btn-outline btn-sm" onclick="showBatchSummary()">← Back to batch</button>' : '')+
+      crumb+
+      '<span style="flex:1"></span>'+
+      '<button class="btn btn-outline btn-sm" onclick="backToUpload()">✕ New upload</button>'+
+    '</div>';
+}
+
+function openBatchItem(sid, fname){
+  S.sid=sid; S.fileName=fname;
+  // Clear the previous file's UI so nothing stale stays on screen while
+  // the new analysis streams. Progress is shown in the main pane (the
+  // upload card's status line is hidden in batch view).
+  S.report=null;
+  document.getElementById('verdict-slot').innerHTML='';
+  document.getElementById('toolbar').innerHTML='';
+  document.getElementById('sidebar').innerHTML='';
+  renderBatchBar();
+  stat('spin', 'Starting analysis', 0, fname);
+  var es=new EventSource('/stream/'+sid);
+  es.onmessage=function(ev){
+    var d; try{ d=JSON.parse(ev.data); }catch(_){ return; }
+    if (d.type==='progress'){
+      stat('spin', d.phase||'Analysing', d.pct||0, fname);
+    } else if (d.type==='error'){
+      es.close(); stat('', '', null);
+      document.getElementById('main').innerHTML=
+        '<div class="empty-state" style="color:var(--danger)">✖ '+X(d.message||'Analysis failed')+'</div>';
+    } else if (d.type==='done'){
+      es.close(); stat('', '', null);
+      S.report=d.report;
+      S.findings=flatten(S.report);
+      showReport();
+    }
+  };
+}
+
+/* ════════ Wiring ════════ */
+(function(){
+  var zone=document.getElementById('drop-zone');
+  zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.classList.add('hover'); });
+  zone.addEventListener('dragleave',function(){ zone.classList.remove('hover'); });
+  zone.addEventListener('drop',     function(e){
+    e.preventDefault(); zone.classList.remove('hover');
+    var fs=Array.from(e.dataTransfer.files||[]);
+    if (fs.length>1) goBatch(fs); else if (fs[0]) go(fs[0]);
+  });
+  zone.addEventListener('click', function(e){
+    if (e.target===zone || e.target.closest('.drop-icon,.drop-label,.drop-sub'))
+      document.getElementById('fi').click();
+  });
+  document.getElementById('fi').addEventListener('change', function(){
+    var fs=Array.from(this.files||[]);
+    if (fs.length>1) goBatch(fs); else if (fs[0]) go(fs[0]);
+    this.value='';
+  });
+})();
+
+/* ════════ Restore report after returning from Settings ════════ */
+(function restoreSession(){
+  var st = null;
+  try { st = JSON.parse(sessionStorage.getItem(STORE_KEY) || 'null'); } catch(e) {}
+  if (!st || !st.sid) return;
+  S.sid = st.sid; S.fileName = st.name || '';
+  stat('spin', 'Reloading report', 0, S.fileName);
+  // Re-queue the uploaded file with CURRENT settings, then reuse the live
+  // stream so the reload shows phases and % exactly like an upload.
+  fetch('/api/rerun/' + encodeURIComponent(st.sid), {method:'POST'})
+    .then(function(r){ if (!r.ok) throw new Error('expired'); return r.json(); })
+    .then(function(){ stream(st.sid); })
+    .catch(function(){
+      S.sid = null;
+      try { sessionStorage.removeItem(STORE_KEY); } catch(e) {}
+      stat('err', 'Previous session expired — upload the file again.', null);
+    });
+})();
+</script>
+{% endblock %}

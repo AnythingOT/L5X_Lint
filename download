@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Runtime state — written by the app on every settings save / bookmark.
+# Ship defaults via DEFAULT_CONFIG in app.py, not via a committed JSON.
+evaluator_config.json
+bookmarks.json
+
+# Don't commit user-supplied lifecycle datasets — only the seed.
+# (Comment this out if you genuinely want to track your curated dataset.)
+# lifecycle.json
+
+# OS junk
+.DS_Store
+Thumbs.db
