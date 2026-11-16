@@ -5,7 +5,7 @@ Pure computation on already-parsed XML (no second parse, no XML generation).
 The layout arithmetic, type tables, sort key, cycle detection and topological
 sort below were moved VERBATIM from the former L5XOpt_UDT / L5XGen_UDT
 modules (which generated full L5X documents just to read back two numbers).
-Equivalence with the old engine was verified by fuzzing; see CHANGES_v2.md.
+Equivalence with the old engine was verified by fuzzing; see docs/history/CHANGES_v2.md.
 
 Public:
   collect(root)        -> layout input from the parsed L5X root, or None

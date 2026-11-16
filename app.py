@@ -14,12 +14,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 
 def resource_path(rel):
-    # PyInstaller bundles set _MEIPASS; everywhere else we use the script dir.
-    try:
-        base = sys._MEIPASS  # type: ignore[attr-defined]
-    except AttributeError:
-        base = os.path.abspath(".")
-    return os.path.join(base, rel)
+    # Bundled read-only files (templates, static). PyInstaller unpacks them to
+    # _MEIPASS; otherwise they sit next to this file. Never the current
+    # directory: `python path/to/app.py` must work from anywhere.
+    return os.path.join(getattr(sys, "_MEIPASS", _APP_DIR), rel)
+
+
+def data_dir():
+    # Writable files (settings). In a PyInstaller build __file__ points into a
+    # temp folder that is deleted on exit, so keep them next to the .exe.
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return _APP_DIR
 
 
 app = Flask(__name__,
@@ -50,7 +56,7 @@ def _evict_expired():
                 d.pop(k, None)
 
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "evaluator_config.json")
+CONFIG_PATH = os.path.join(data_dir(), "evaluator_config.json")
 
 DEFAULT_CONFIG = {
     # Severity is fixed per rule by its code (see rules.py). Rules can only

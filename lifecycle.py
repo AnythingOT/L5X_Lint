@@ -23,11 +23,17 @@ Public API:
   lifecycle_findings(modules, sev) -> list[Finding]
 """
 
-import os, json, csv, io, threading, datetime
+import os, sys, json, csv, io, threading, datetime
 from typing import Optional
 from base_check import Finding, effective_severity
 
-_DATA_PATH = os.path.join(os.path.dirname(__file__), "lifecycle.json")
+_SEED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lifecycle.json")
+# In a PyInstaller build the bundled seed lives in a temp folder that is deleted
+# on exit, so imports are saved next to the .exe and the seed is the fallback.
+if getattr(sys, "frozen", False):
+    _DATA_PATH = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "lifecycle.json")
+else:
+    _DATA_PATH = _SEED_PATH
 _lock = threading.Lock()
 _cache = {"loaded": False, "data": {}, "meta": {}}
 
@@ -52,10 +58,11 @@ def _load():
         if _cache["loaded"]:
             return
         _cache["loaded"] = True
-        if not os.path.exists(_DATA_PATH):
+        path = _DATA_PATH if os.path.exists(_DATA_PATH) else _SEED_PATH
+        if not os.path.exists(path):
             return
         try:
-            with open(_DATA_PATH, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 raw = json.load(f)
         except (OSError, json.JSONDecodeError):
             return
