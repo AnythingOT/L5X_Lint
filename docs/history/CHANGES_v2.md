@@ -1,7 +1,7 @@
 # Changes (v2)
 
 This iteration applies the directives from the design review. Everything
-here is in addition to the v1 fixes in `CHANGES.md`.
+here is in addition to the v1 fixes in `CHANGES_v1.md`.
 
 ## Removed
 
