@@ -336,15 +336,39 @@ _TC_ONLY  = {"CU", "CD", "OV", "UN"}
 def _write_targets(it):
     """Operands an instruction WRITES (destination), by instruction."""
     n, ops = it[1].upper(), it[2]
-    if n in ("OTE", "OTL", "OTU", "CLR", "ONS") and ops:
+    # the instruction's own structure: RES, timers and counters write it too
+    if n in ("OTE", "OTL", "OTU", "CLR", "ONS", "RES", "TON", "TOF", "RTO", "CTU", "CTD") and ops:
         return [ops[0]]
-    if n in ("MOV", "COP", "CPS", "TRN", "NEG", "NOT", "FRD", "TOD", "SWPB") and len(ops) >= 2:
-        return [ops[-1] if n not in ("COP", "CPS") else ops[1]]
+    if n in ("MOV", "MOVE", "COP", "CPS", "FLL", "TRN", "NEG", "NOT", "FRD", "TOD", "SWPB") and len(ops) >= 2:
+        return [ops[1] if n in ("COP", "CPS", "FLL") else ops[-1]]
+    if n == "BTD" and len(ops) >= 3:
+        return [ops[2]]
     if n in ("ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR") and len(ops) >= 3:
         return [ops[2]]
     if n == "CPT" and ops:
         return [ops[0]]
     return []
+
+
+def safety_std_write(ctx):
+    """ERR018: a standard program writes a safety tag. GuardLogix will not verify such a project, so
+    this catches it before import (hand-edited or generated L5X). Reading a safety tag is allowed.
+    It reports what the logic does and never rates safety (no category, PL or SIL)."""
+    classes = {p["name"]: p.get("class", "Standard") for p in ctx.data.get("programs", [])}
+    out = []
+    for loc, text, _instrs, prog, aoi, *_ in ctx.rungs:
+        if aoi or not prog or classes.get(prog) == "Safety":
+            continue
+        for it, _b in rung_tree.walk_series(rung_tree.parse(text)):
+            for tgt in _write_targets(it):
+                base = re.split(r"[.\[]", tgt.strip())[0]
+                tag = ctx.prog.get(prog, {}).get(base) or ctx.ctrl.get(base)
+                if tag and tag.get("class") == "Safety":
+                    out.append(Finding("safety_std_write", "", _P,
+                        f"Standard program '{prog}' writes safety tag '{base}' with {it[1]}({','.join(it[2])}). "
+                        "Only safety logic may write safety tags; Studio 5000 will not verify this.",
+                        location=loc))
+    return out
 
 
 def protected_writes(ctx):

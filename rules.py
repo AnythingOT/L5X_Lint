@@ -32,6 +32,7 @@ RULES = [
  ("ERR015","oneshot_reuse",   "One-Shot Storage Reused",       "An ONS/OSR/OSF storage bit is shared by several one-shots, or is also written by other logic, so edges get missed."),
  ("ERR016","res_missing",     "No Reset For RTO/Counter",      "An RTO or counter accumulates but is never reset (no RES and no write to .ACC). For arrays, a reset of any element via an index counts."),
  ("ERR017","lc_discontinued", "Discontinued Module",           "An I/O module catalog is Discontinued according to the lifecycle dataset. Spares may be unobtainable."),
+ ("ERR018","safety_std_write", "Safety Tag Written By Standard Logic", "A standard (non-safety) program writes a safety-class tag. GuardLogix allows standard logic to read safety tags, not write them, so the project will not verify. Reports what the logic does; it never rates safety."),
 
  ("WAR001","safety_std_map",  "Safety Map Naming",             "A standard tag mapped to safety tag SFTY_X must be named STD_X."),
  ("WAR002","pc_naming",       "Produced/Consumed Naming",      "A consumed tag must use the same name as the produced tag it maps to, with PRO replaced by CON."),

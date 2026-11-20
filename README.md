@@ -1,7 +1,7 @@
 # L5X Lint
 
 Static analysis for Rockwell Studio 5000 `.L5X` exports. L5X Lint reads the
-export, checks it against a fixed checklist of 49 programming rules, and
+export, checks it against a fixed checklist of 50 programming rules, and
 reports the findings. **It only reports. It never modifies your project.**
 All corrections are made by the engineer in Studio 5000.
 
@@ -55,6 +55,7 @@ only be switched on or off; a configurable severity would make the code lie.
 | ERR015 | One-Shot Storage Reused | An ONS/OSR/OSF storage bit is shared by several one-shots, or is also written by other logic, so edges get missed. |
 | ERR016 | No Reset For RTO/Counter | An RTO or counter accumulates but is never reset (no RES and no write to .ACC). For arrays, a reset of any element via an index counts. |
 | ERR017 | Discontinued Module | An I/O module catalog is Discontinued according to the lifecycle dataset. Spares may be unobtainable. |
+| ERR018 | Safety Tag Written By Standard Logic | A standard (non-safety) program writes a safety-class tag. GuardLogix allows standard logic to read safety tags, not write them, so the project will not verify. Reports what the logic does; it never rates safety. |
 | WAR001 | Safety Map Naming | A standard tag mapped to safety tag SFTY_X must be named STD_X. |
 | WAR002 | Produced/Consumed Naming | A consumed tag must use the same name as the produced tag it maps to, with PRO replaced by CON. |
 | WAR003 | Task Name Missing Period | A periodic task's name must state its period (e.g. Task_10MS for a 10 ms task). |

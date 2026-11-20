@@ -130,6 +130,8 @@ def _parse_programs(ctrl: ET.Element) -> list:
     for prog in ctrl.findall("./Programs/Program"):
         programs.append({
             "name":          prog.get("Name", ""),
+            # GuardLogix: "Safety" or "Standard" (seen in real exports); absent on standard controllers
+            "class":         prog.get("Class", "Standard"),
             "main_routine":  prog.get("MainRoutineName", ""),
             "fault_routine": prog.get("FaultRoutineName", ""),
             "children":      [c.get("Name", "") for c in prog.findall("./ChildPrograms/ChildProgram")],
