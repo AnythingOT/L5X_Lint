@@ -5,13 +5,13 @@ The rule codes, titles and severities live in rules.py.
 
 from checks.common import Ctx, _all_rungs, _ucfg
 from checks.io import ekey_disabled, io_alias, io_no_desc, io_unmapped
-from checks.logic import _msg_stagger, array_bounds, div_zero, dup_instr, empty_branch, jmp_back, mov_real_int, oneshot_reuse, protected_writes, res_missing, timer_reuse
+from checks.logic import _msg_stagger, array_bounds, div_zero, dup_instr, empty_branch, jmp_back, mov_real_int, oneshot_reuse, protected_writes, res_missing, safety_std_write, timer_reuse
 from checks.program import _ctrl_fault_handler, _prog_fault_routine, task_period_name
 from checks.tags import _safety_std_map, desc_spare, pc_naming, small_int, timer_pre
 from checks.udt import _udt_order, udt_member_desc, unused_type
 
 
-ALL = [timer_pre, protected_writes, dup_instr, array_bounds, div_zero, jmp_back, timer_reuse, oneshot_reuse,
+ALL = [timer_pre, protected_writes, safety_std_write, dup_instr, array_bounds, div_zero, jmp_back, timer_reuse, oneshot_reuse,
        res_missing, pc_naming, task_period_name, empty_branch, mov_real_int,
        small_int, io_unmapped, io_no_desc, ekey_disabled, desc_spare,
        unused_type, udt_member_desc, io_alias]

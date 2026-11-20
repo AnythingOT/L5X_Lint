@@ -17,7 +17,7 @@ Index structure:
   }
 
 Also builds:
-  write_index  — tags written by output instructions (OTE, OTL, OTU, MOV dest, arithmetic dest)
+  write_index  — operands written: OTE/OTL/OTU, MOV/COP/CPT/math destinations, RES, timers, counters
   ote_index    — tags driven by OTE specifically
   otl_index    — tags driven by OTL
   otu_index    — tags driven by OTU
@@ -26,23 +26,28 @@ Also builds:
 from collections import defaultdict
 from rung_parser import parse_rung, operand_base
 
-# Instructions whose FIRST operand is a write destination
-_WRITE_FIRST = {
-    "OTE", "OTL", "OTU",   # bit output
-    "MOV", "COP", "CPS",   # move/copy
-    "CLR",                  # clear
-    "FLL",                  # fill
-    "BTD",                  # bit field
-}
+# Which operand an instruction writes, by position (Logix operand order):
+#   OTE(Dest)  MOV(Source,Dest)  COP(Source,Dest,Length)  ADD(A,B,Dest)  CPT(Dest,Expression)
+_DEST_FIRST  = {"OTE", "OTL", "OTU", "CLR", "ONS", "RES", "TON", "TOF", "RTO", "CTU", "CTD", "CPT"}
+_DEST_SECOND = {"COP", "CPS", "FLL"}
+_DEST_THIRD  = {"BTD"}
+_DEST_LAST   = {"MOV", "MOVE", "TRN", "NEG", "NOT", "FRD", "TOD", "SWPB", "SQR", "ABS", "LN", "LOG",
+                "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR"}
 
-# Instructions whose SECOND operand is a write destination
-_WRITE_SECOND = {
-    "ADD", "SUB", "MUL", "DIV", "MOD",
-    "AND", "OR",  "XOR", "NOT",
-    "SQR", "ABS", "NEG", "LN",  "LOG",
-    "CPT",                          # compute
-    "SWPB",                         # swap bytes dest
-}
+
+def _dest_index(iname: str, ops: list) -> int | None:
+    if not ops:
+        return None
+    if iname in _DEST_FIRST:
+        return 0
+    if iname in _DEST_SECOND and len(ops) >= 2:
+        return 1
+    if iname in _DEST_THIRD and len(ops) >= 3:
+        return 2
+    if iname in _DEST_LAST and len(ops) >= 2:
+        return len(ops) - 1
+    return None
+
 
 # Pure output coil instructions
 _COIL_INSTRS = {"OTE", "OTL", "OTU"}
@@ -84,11 +89,7 @@ def build(program_data: dict) -> dict:
                         tag_index[base].append(entry)
 
                         # Write tracking
-                        is_write = (
-                            (iname in _WRITE_FIRST  and idx == 0) or
-                            (iname in _WRITE_SECOND and idx == len(ops) - 1)
-                        )
-                        if is_write:
+                        if idx == _dest_index(iname, ops):
                             write_index[op].append(entry)  # full operand (with .member)
 
                         if iname == "OTE" and idx == 0:

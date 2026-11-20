@@ -149,7 +149,7 @@ def test_registry_codes_unique_and_prefix_matches_severity():
     assert len(codes) == len(set(codes))
     for c, rec in rules.BY_CODE.items():
         assert rules.SEV_PREFIX[rec["severity"]] == c[:3], c
-    assert len(codes) == 49   # 45 checklist (WAR012 retired) + WAR022 + 3 lifecycle
+    assert len(codes) == 50   # 45 checklist (WAR012 retired) + WAR022 + ERR018 + 3 lifecycle
 
 def test_every_finding_has_code_and_fixed_severity():
     for f in FS:
@@ -637,6 +637,55 @@ console.log(JSON.stringify({side: full, closed: closed, rail: rail, main: els['m
     assert "side-rail" in d["rail"]
     for gone in ("bm-btn", ">WF<", "REQ-AUT", "req-tag", "Compliance"):
         assert gone not in d["rowhtml"] and gone not in d["side"], gone
+
+# ── ERR018: own small GuardLogix project (attributes as in real exports: Program/Tag Class="Safety") ──
+SAFETY_FIX = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content TargetType="Controller" SoftwareRevision="36.00" SchemaRevision="1.0">
+<Controller Name="Cell" ProcessorType="1756-L83ES" MajorRev="36" MinorRev="11">
+  <Tags>
+    <Tag Name="SafeOut" Class="Safety" TagType="Base" DataType="BOOL"/>
+    <Tag Name="SafeVal" Class="Safety" TagType="Base" DataType="DINT"/>
+    <Tag Name="SafeTmr" Class="Safety" TagType="Base" DataType="TIMER"/>
+    <Tag Name="StdOut" TagType="Base" DataType="BOOL"/>
+    <Tag Name="StdVal" TagType="Base" DataType="DINT"/>
+  </Tags>
+  <Programs>
+    <Program Name="Std" Class="Standard" MainRoutineName="Main"><Routines><Routine Name="Main" Type="RLL"><RLLContent>
+      <Rung Number="0" Type="N"><Text><![CDATA[XIC(SafeOut)OTE(StdOut);]]></Text></Rung>
+      <Rung Number="1" Type="N"><Text><![CDATA[XIC(StdOut)OTE(SafeOut);]]></Text></Rung>
+      <Rung Number="2" Type="N"><Text><![CDATA[XIC(StdOut)MOVE(StdVal,SafeVal);]]></Text></Rung>
+      <Rung Number="3" Type="N"><Text><![CDATA[XIC(StdOut)MOV(SafeVal,StdVal);]]></Text></Rung>
+      <Rung Number="4" Type="N"><Text><![CDATA[XIC(StdOut)RES(SafeTmr);]]></Text></Rung>
+    </RLLContent></Routine></Routines></Program>
+    <Program Name="Sfty" Class="Safety" MainRoutineName="Main"><Routines><Routine Name="Main" Type="RLL"><RLLContent>
+      <Rung Number="0" Type="N"><Text><![CDATA[XIC(SafeOut)TON(SafeTmr,?,?);]]></Text></Rung>
+      <Rung Number="1" Type="N"><Text><![CDATA[XIC(SafeTmr.DN)OTE(SafeOut);]]></Text></Rung>
+    </RLLContent></Routine></Routines></Program>
+  </Programs>
+  <Tasks><Task Name="MainTask" Type="CONTINUOUS"><ScheduledPrograms><ScheduledProgram Name="Std"/></ScheduledPrograms></Task></Tasks>
+</Controller></RSLogix5000Content>"""
+
+def test_ERR018_safety_tag_written_by_standard_logic():
+    m = " | ".join(f["message"] + " @ " + f["location"] for f in flatten_findings(run(SAFETY_FIX))
+                   if f["code"] == "ERR018")
+    assert "OTE(SafeOut)" in m and "Rung 1" in m                    # coil
+    assert "MOVE(StdVal,SafeVal)" in m                              # v36 MOVE destination
+    assert "RES(SafeTmr)" in m                                      # reset of a safety timer
+    assert "Std / Main / Rung 0" not in m                           # XIC(SafeOut): a read
+    assert "MOV(SafeVal,StdVal)" not in m                           # reading a safety tag is allowed
+    assert "Sfty /" not in m                                        # safety logic may write it
+    assert m.count("Std / Main") == 3
+
+def test_ERR018_quiet_on_a_controller_without_safety():
+    assert not by("ERR018")                                         # the main fixture has no safety program writes
+
+def test_xref_write_index_marks_destinations_not_sources():
+    import cross_ref
+    data = {"controller": {}, "aois": [], "tags": [], "programs": [{"name": "P", "tags": [], "routines": [
+        {"name": "R", "rungs": [{"number": "0", "text": "XIC(A)MOV(Src,Dst);"},
+                                {"number": "1", "text": "XIC(A)COP(SrcA[0],DstA[0],5);"},
+                                {"number": "2", "text": "XIC(A)CPT(Res,Src+1);"}]}]}]}
+    assert set(cross_ref.build(data)["write_index"]) == {"Dst", "DstA[0]", "Res"}
 
 def main():
     fns = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
