@@ -1,0 +1,7 @@
+cff-version: 1.2.0
+message: "If you use L5X_Lint, please cite it as below."
+title: "L5X_Lint"
+authors:
+  - name: "AJ (AnythingOT)"
+repository-code: "https://github.com/AnythingOT/L5X_Lint"
+license: GPL-3.0-only
