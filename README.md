@@ -268,6 +268,9 @@ Copyright (C) 2026 AJ ([AnythingOT](https://github.com/AnythingOT)).
 L5X_Lint is free software under the **GNU General Public License v3.0 only** (GPL-3.0-only): see `LICENSE`.
 You may use it, change it and share it, also at work; if you share a changed version, share its source
 under the same licence. Versions up to commit `d20c4fe` were released under the MIT licence, and those copies
-stay MIT.
+stay MIT. Packages by others: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Not affiliated with or endorsed by Rockwell Automation. Studio 5000 and Logix Designer are trademarks of
+Rockwell Automation, Inc.
 
 Using it in your work? Credit is all that is asked: see `CITATION.cff`, or GitHub's *Cite this repository*.
