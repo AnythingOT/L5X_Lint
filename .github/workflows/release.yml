@@ -1,0 +1,125 @@
+name: Build Windows exe
+
+# Publish a release either way:
+#  - push a tag like v1.0.0, or
+#  - Actions tab -> "Build Windows exe" -> Run workflow, and enter a tag.
+# Run it with the tag left empty to only build a downloadable artifact.
+#
+# The exe is the web app: it starts the local server on 127.0.0.1:5002 and opens the
+# browser (same options as app.py: --port N, --no-browser). Settings, bookmarks and an
+# imported lifecycle.json are saved next to the exe.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, e.g. v1.0.0 (leave empty to only build)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    # Same environment as tests.yml.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - run: pip install -r requirements.txt pypdf
+      - run: python tests/test_rules.py
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install packages and PyInstaller
+        run: python -m pip install --upgrade pip -r requirements.txt pyinstaller
+
+      - name: Build exe
+        run: >-
+          pyinstaller --noconfirm --clean --onefile --console --name L5X_Lint
+          --add-data "templates;templates" --add-data "static;static" --add-data "lifecycle.json;."
+          app.py
+
+      - name: Write third-party licences
+        # Full licence texts of Python and every package bundled in the exe.
+        run: python tools/collect_licenses.py -r requirements.txt --app "L5X Lint" -o dist/THIRD_PARTY_LICENSES.txt
+
+      - name: Smoke test the exe (serves the UI and its static files)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\L5X_Lint.exe -ArgumentList '--no-browser', '--port', '5002' -PassThru `
+                 -RedirectStandardOutput smoke_out.log -RedirectStandardError smoke_err.log
+          try {
+            $ok = $false
+            foreach ($i in 1..60) {
+              Start-Sleep -Seconds 1
+              if ($p.HasExited) { throw "exe exited early with code $($p.ExitCode)" }
+              try { $r = Invoke-WebRequest http://127.0.0.1:5002/ -UseBasicParsing -TimeoutSec 5; $ok = $true; break } catch { }
+            }
+            if (-not $ok) { throw "exe did not answer on port 5002 within 60 s" }
+            if ($r.StatusCode -ne 200) { throw "/ returned $($r.StatusCode)" }
+            foreach ($u in '/static/style.css', '/static/script.js', '/settings') {
+              $s = (Invoke-WebRequest "http://127.0.0.1:5002$u" -UseBasicParsing -TimeoutSec 10).StatusCode
+              if ($s -ne 200) { throw "$u returned $s" } }
+          } finally {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+            Get-Content smoke_out.log, smoke_err.log -ErrorAction SilentlyContinue
+          }
+          # app.py logs this when openpyxl or reportlab did not make it into the exe
+          if (Select-String -Path smoke_err.log -Pattern 'export disabled' -Quiet) { throw "Excel/PDF export missing from the exe" }
+          "Smoke test OK"
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash dist\L5X_Lint.exe -Algorithm SHA256).Hash
+          "$h  L5X_Lint.exe" | Out-File -Encoding ascii dist\SHA256SUMS.txt
+          Get-Content dist\SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: L5X_Lint
+          path: |
+            dist/L5X_Lint.exe
+            dist/SHA256SUMS.txt
+            dist/THIRD_PARTY_LICENSES.txt
+
+      - name: Publish release
+        if: github.ref_type == 'tag' || inputs.tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = if ($env:REF_TYPE -eq 'tag') { $env:REF_NAME } else { $env:TAG_INPUT.Trim() }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') { throw "Tag must look like v1.2.3, got '$tag'" }
+          $files = 'dist\L5X_Lint.exe', 'dist\SHA256SUMS.txt', 'dist\THIRD_PARTY_LICENSES.txt'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            # release already exists (e.g. created on the web): replace its files
+            gh release upload $tag @files --clobber
+          } else {
+            gh release create $tag @files --target $env:GITHUB_SHA `
+              --title "L5X Lint $tag" `
+              --notes "Windows build. Download L5X_Lint.exe, put it in a folder you can write to, and run it - no Python needed. It opens http://127.0.0.1:5002 in your browser (options: --port N, --no-browser); close the console window to stop it. Settings are saved next to the exe. The exe is unsigned, so Windows SmartScreen may warn on first launch (More info -> Run anyway). Verify the download against SHA256SUMS.txt. THIRD_PARTY_LICENSES.txt holds the licences of Python and the packages the exe bundles; keep it with the exe if you pass it on."
+          }
+          if ($LASTEXITCODE -ne 0) { throw "gh release failed" }

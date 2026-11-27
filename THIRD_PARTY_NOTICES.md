@@ -18,6 +18,14 @@ licences come with them when installed.
 | pillow, charset-normalizer (used by reportlab) | | MIT-CMU, MIT |
 | pypdf (tests only) | reading exported PDFs in `tests/test_rules.py` | BSD-3-Clause |
 
+## The .exe
+
+`L5X_Lint.exe` (built by `.github/workflows/release.yml`) contains copies of Python, the
+packages above (not pypdf) and the PyInstaller bootloader (GPL-2.0-or-later with an exception
+that lets the exe be shared under any licence). Passing the exe on means passing their licences
+on too: each release attaches `THIRD_PARTY_LICENSES.txt` with the full texts, made by
+`tools/collect_licenses.py` from the packages actually bundled. **Give it along with the exe.**
+
 ## Trademarks
 
 Rockwell Automation, Studio 5000, Logix Designer, RSLogix 5000, ControlLogix, CompactLogix and

@@ -18,6 +18,15 @@ python app.py                       # opens http://127.0.0.1:5002
 Options: `--port N`, `--no-browser`. Drop one `.L5X` (single report) or
 several (batch summary) onto the page.
 
+No Python on the PC? Download `L5X_Lint.exe` from
+[Releases](https://github.com/AnythingOT/L5X_Lint/releases), put it in a folder
+you can write to and run it: same app, same options. Settings and an imported
+lifecycle dataset are saved next to the exe. To publish a release, push a tag
+like `v1.0.0` (or run *Build Windows exe* in the Actions tab):
+`.github/workflows/release.yml` runs the tests, builds the exe, starts it once
+to check it serves the UI, and attaches it with a checksum and
+`THIRD_PARTY_LICENSES.txt`.
+
 ## Rule codes and severity
 
 Every rule has a code whose prefix is its severity:
